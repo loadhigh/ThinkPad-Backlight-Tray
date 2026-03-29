@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net481</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <RootNamespace>ThinkPadBacklightTray</RootNamespace>
+        <AssemblyName>ThinkPad-Backlight-Tray</AssemblyName>
+        <Nullable>enable</Nullable>
+        <!-- Let the SDK generate version attributes from <Version>;
+             suppress only the ones defined manually in AssemblyInfo.cs. -->
+        <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
+        <GenerateAssemblyDescriptionAttribute>false</GenerateAssemblyDescriptionAttribute>
+        <GenerateAssemblyProductAttribute>false</GenerateAssemblyProductAttribute>
+        <GenerateAssemblyCopyrightAttribute>false</GenerateAssemblyCopyrightAttribute>
+        <GenerateComVisibleAttribute>false</GenerateComVisibleAttribute>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <ApplicationIcon>app.ico</ApplicationIcon>
+        <Version>1.0.0</Version>
+    </PropertyGroup>
+
+    <!-- WPF (Info & About dialogs) -->
+    <ItemGroup>
+        <Reference Include="PresentationFramework"/>
+        <Reference Include="PresentationCore"/>
+        <Reference Include="WindowsBase"/>
+        <Reference Include="System.Xaml"/>
+    </ItemGroup>
+
+    <!-- WinForms (NotifyIcon + ContextMenuStrip) -->
+    <ItemGroup>
+        <Reference Include="System.Windows.Forms"/>
+        <Reference Include="System.Drawing"/>
+    </ItemGroup>
+
+    <!-- WMI event monitoring -->
+    <ItemGroup>
+        <Reference Include="System.Management"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="app.ico" CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
+</Project>
