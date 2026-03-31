@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] – 2026-03-30
+
+### Fixed
+
+- Fix slow memory growth caused by undisposed WMI `ManagementBaseObject` COM
+  wrappers in `EventArrived` handlers (`Win32_SystemConfigurationChangeEvent`,
+  `Win32_PowerSupplyEvent`)
+- Replace `Task.Run` + `Thread.Sleep` in resume handler with a one-shot
+  `Timer` to avoid blocking a thread-pool thread for 5 seconds on every wake
+
 ## [1.0.0] – 2026-03-29
 
 ### Added

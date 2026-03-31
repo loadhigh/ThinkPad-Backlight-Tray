@@ -35,6 +35,9 @@ public class EventMonitor : IDisposable
     // Ticks after which non-resume restore triggers are allowed again.
     private long _resumeHoldoffUntil;
 
+    // One-shot timer for the post-resume restore (avoids blocking a thread pool thread).
+    private Timer? _resumeRestoreTimer;
+
     private bool _subscribed;
 
     // Ticks (DateTime.UtcNow.Ticks) after which Fn+Space level changes are allowed again.
@@ -130,8 +133,9 @@ public class EventMonitor : IDisposable
                     "SELECT * FROM Win32_SystemConfigurationChangeEvent");
 
                 _watcher1 = new ManagementEventWatcher(query1);
-                _watcher1.EventArrived += (_, _) =>
+                _watcher1.EventArrived += (_, e) =>
                 {
+                    e.NewEvent?.Dispose(); // release COM wrapper to prevent WMI leak
                     Debug.WriteLine(
                         "SystemConfigurationChangeEvent triggered — debouncing");
                     DebouncedFireRestore();
@@ -153,8 +157,9 @@ public class EventMonitor : IDisposable
                     "SELECT * FROM Win32_PowerSupplyEvent");
 
                 _watcher2 = new ManagementEventWatcher(query2);
-                _watcher2.EventArrived += (_, _) =>
+                _watcher2.EventArrived += (_, e) =>
                 {
+                    e.NewEvent?.Dispose(); // release COM wrapper to prevent WMI leak
                     Debug.WriteLine("PowerSupplyEvent triggered — debouncing");
                     DebouncedFireRestore();
                 };
@@ -255,12 +260,11 @@ public class EventMonitor : IDisposable
             Interlocked.Exchange(ref _resumeHoldoffUntil,
                 DateTime.UtcNow.Ticks + ResumeHoldoffMs * TimeSpan.TicksPerMillisecond);
 
-            // After the hold-off, fire the one authoritative restore.
-            Task.Run(() =>
-            {
-                Thread.Sleep(ResumeHoldoffMs);
-                FireRestoreFromResume();
-            });
+            // After the hold-off, fire the one authoritative restore via a one-shot timer
+            // (avoids blocking a thread pool thread with Thread.Sleep).
+            _resumeRestoreTimer?.Dispose();
+            _resumeRestoreTimer = new Timer(_ => FireRestoreFromResume(), null,
+                ResumeHoldoffMs, Timeout.Infinite);
         }
     }
 
@@ -356,7 +360,7 @@ public class EventMonitor : IDisposable
                     Debug.WriteLine($"FnSpace watch thread failed: {ex.Message}");
                 }
             })
-            { IsBackground = true, Name = "FnSpace-Watch" };
+        { IsBackground = true, Name = "FnSpace-Watch" };
 
         _fnSpaceThread.Start();
         Debug.WriteLine("FnSpace registry watcher started");
@@ -430,6 +434,17 @@ public class EventMonitor : IDisposable
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error stopping WMI debounce timer: {ex.Message}");
+            }
+
+        if (_resumeRestoreTimer != null)
+            try
+            {
+                _resumeRestoreTimer.Dispose();
+                _resumeRestoreTimer = null;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error stopping resume restore timer: {ex.Message}");
             }
 
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
