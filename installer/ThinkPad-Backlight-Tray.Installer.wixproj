@@ -1,0 +1,20 @@
+<Project Sdk="WixToolset.Sdk/6.0.2">
+
+  <PropertyGroup>
+    <!-- Output MSI name: ThinkPad-Backlight-Tray-Setup-v1.0.1.msi -->
+    <OutputName>ThinkPad-Backlight-Tray-Setup-v$(Version)</OutputName>
+
+    <!-- Defaults; override on the command line with -p:Version=X.Y.Z and -p:PublishDir=path -->
+    <Version    Condition="'$(Version)' == ''">0.0.0</Version>
+    <PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildThisFileDirectory)..\publish</PublishDir>
+
+    <!-- Expose both values as WiX preprocessor variables: $(var.Version) / $(var.PublishDir) -->
+    <DefineConstants>Version=$(Version);PublishDir=$(PublishDir)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WiX Util extension provides util:CloseApplication -->
+    <PackageReference Include="WixToolset.Util.wixext" Version="6.0.2" />
+  </ItemGroup>
+
+</Project>

@@ -6,3 +6,4 @@ obj/
 *.suo
 .vscode/
 *.binlog
+publish/

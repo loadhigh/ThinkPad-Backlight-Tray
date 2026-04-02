@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ThinkPad Backlight Tray — WiX v6 per-user MSI installer (no admin required)
+
+  Build with:
+    dotnet build installer\ThinkPad-Backlight-Tray.Installer.wixproj \
+        -p:Version=X.Y.Z -p:PublishDir=<path-to-publish>
+
+  Install silently:
+    msiexec /i ThinkPad-Backlight-Tray-Setup-vX.Y.Z.msi /quiet
+  Install with progress bar:
+    msiexec /i ThinkPad-Backlight-Tray-Setup-vX.Y.Z.msi /passive
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="ThinkPad Backlight Tray"
+           Version="$(var.Version)"
+           Manufacturer="loadhigh"
+           UpgradeCode="7e8f9a0b-1c2d-3e4f-5a6b-7c8d9e0f1a2b"
+           Scope="perUser"
+           Compressed="yes">
+
+    <!-- Prevent downgrades; silently remove any older version first -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of ThinkPad Backlight Tray is already installed."
+                  Schedule="afterInstallInitialize" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ARP (Add/Remove Programs) metadata -->
+    <Icon Id="AppIcon" SourceFile="..\app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK"    Value="https://github.com/loadhigh/ThinkPad-Backlight-Tray" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/loadhigh/ThinkPad-Backlight-Tray" />
+
+    <!-- Kill any running instance before install / upgrade / uninstall -->
+    <util:CloseApplication Target="ThinkPad-Backlight-Tray.exe"
+                           TerminateProcess="0"
+                           RebootPrompt="no" />
+
+    <!-- ── Directories ───────────────────────────────────────────── -->
+
+    <!-- %LOCALAPPDATA%\ThinkPad-Backlight-Tray -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="ThinkPad-Backlight-Tray" />
+    </StandardDirectory>
+
+    <!-- Start Menu\Programs\ThinkPad Backlight Tray -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppMenuFolder" Name="ThinkPad Backlight Tray" />
+    </StandardDirectory>
+
+    <!-- ── Components ────────────────────────────────────────────── -->
+
+    <!-- Start Menu shortcut.
+         Per-user shortcuts need a registry KeyPath so MSI tracks them. -->
+    <ComponentGroup Id="Shortcuts" Directory="AppMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="StartMenuLink"
+                  Name="ThinkPad Backlight Tray"
+                  Target="[INSTALLFOLDER]ThinkPad-Backlight-Tray.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon"
+                  IconIndex="0" />
+        <RemoveFolder Id="RemoveAppMenuFolder" Directory="AppMenuFolder" On="uninstall" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\loadhigh\ThinkPad-Backlight-Tray"
+                       Name="ShortcutInstalled"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- HKCU Run entry so the app starts with Windows.
+         The app's own "Run at Startup" toggle manages this key too;
+         the installer pre-enables it so backlight is restored on first reboot. -->
+    <ComponentGroup Id="StartupRegistry" Directory="INSTALLFOLDER">
+      <Component Id="RunAtStartup">
+        <RegistryValue Root="HKCU"
+                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                       Name="ThinkPad-Backlight-Tray"
+                       Type="string"
+                       Value="&quot;[INSTALLFOLDER]ThinkPad-Backlight-Tray.exe&quot;"
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Published application files.
+         $(var.PublishDir) is set by DefineConstants in the .wixproj.
+
+         ICE38: Components installing to a user-profile directory (%LOCALAPPDATA%) must
+                use a registry key under HKCU as the KeyPath — not a file.
+         ICE64: The install directory must appear in the RemoveFile table; achieved via
+                RemoveFolder in the MainExecutable component. -->
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+
+      <Component Id="MainExecutable" Guid="{A1F72C9D-0A29-49C9-8E37-D8E52A49FA61}">
+        <File Id="MainExe" Source="$(var.PublishDir)\ThinkPad-Backlight-Tray.exe" />
+        <!-- ICE64: remove the install directory when it becomes empty on uninstall -->
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\loadhigh\ThinkPad-Backlight-Tray"
+                       Name="MainExePath"
+                       Type="string"
+                       Value="[INSTALLFOLDER]ThinkPad-Backlight-Tray.exe"
+                       KeyPath="yes" />
+      </Component>
+
+      <Component Id="ConfigFile" Guid="{A8D4A5A8-958C-4BF5-9F37-6F5B32E2C0E2}">
+        <File Source="$(var.PublishDir)\ThinkPad-Backlight-Tray.exe.config" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\loadhigh\ThinkPad-Backlight-Tray"
+                       Name="ConfigInstalled"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+
+      <Component Id="AppIconFile" Guid="{68E7D1F4-EA46-4C7C-9D8D-98BF933BA679}">
+        <File Source="$(var.PublishDir)\app.ico" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\loadhigh\ThinkPad-Backlight-Tray"
+                       Name="IconInstalled"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+
+    </ComponentGroup>
+
+    <!-- ── Feature ───────────────────────────────────────────────── -->
+    <Feature Id="Main" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentGroupRef Id="Shortcuts" />
+      <ComponentGroupRef Id="StartupRegistry" />
+    </Feature>
+
+    <!-- ── Launch after fresh install ───────────────────────────── -->
+    <!--
+      SetProperty assigns the formatted path at execute time, which avoids
+      the WIX1077 warning about referencing a directory property at declaration time.
+    -->
+    <SetProperty Id="LAUNCHAPP"
+                 Value='"[INSTALLFOLDER]ThinkPad-Backlight-Tray.exe"'
+                 Before="CA_LaunchApp"
+                 Sequence="execute" />
+    <CustomAction Id="CA_LaunchApp"
+                  Property="LAUNCHAPP"
+                  ExeCommand=""
+                  Execute="immediate"
+                  Return="asyncNoWait" />
+
+    <InstallExecuteSequence>
+      <!-- Fire only on a fresh install, not on upgrade or uninstall -->
+      <Custom Action="CA_LaunchApp" After="InstallFinalize" Condition="NOT Installed" />
+    </InstallExecuteSequence>
+
+  </Package>
+</Wix>

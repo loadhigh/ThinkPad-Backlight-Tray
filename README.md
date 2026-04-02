@@ -25,11 +25,19 @@ after lid-close, power, and display events.
 
 ## Install
 
-Download the **Setup exe** from the latest
+Download the **MSI installer** from the latest
 [GitHub Release](../../releases/latest) and run it — no admin required.
 The installer places files under `%LOCALAPPDATA%\ThinkPad-Backlight-Tray` and
 registers auto-start via `HKCU\...\Run`. Auto-start can also be toggled from
 the tray menu ("Run at Startup").
+
+```powershell
+# Silent install
+msiexec /i ThinkPad-Backlight-Tray-Setup-vX.Y.Z.msi /quiet
+
+# Install with progress bar
+msiexec /i ThinkPad-Backlight-Tray-Setup-vX.Y.Z.msi /passive
+```
 
 A **portable zip** is also provided for manual use.
 
@@ -41,7 +49,14 @@ A **portable zip** is also provided for manual use.
 ## Build
 
 ```powershell
+# Application
 dotnet build -c Release
+
+# MSI installer (requires the WiX v6 dotnet tool)
+dotnet tool install --global wix
+dotnet build installer\ThinkPad-Backlight-Tray.Installer.wixproj `
+    -p:Version=1.0.1 `
+    -p:PublishDir=$(Resolve-Path .\publish)
 ```
 
 ## Run
@@ -101,7 +116,8 @@ portable zip and per-user installer to GitHub Releases.
 - `SessionHelper.cs` — physical console session detection
 - `SettingsManager.cs` — registry persistence (backlight level, auto-restore, run-at-startup)
 - `Program.cs` — entry point (`[STAThread]`) + CLI switch handler
-- `installer/setup.iss` — Inno Setup per-user installer script
+- `installer/setup.wxs` — WiX v6 MSI installer source
+- `installer/ThinkPad-Backlight-Tray.Installer.wixproj` — WiX MSBuild project (per-user, no admin)
 
 ## License
 

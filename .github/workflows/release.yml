@@ -20,30 +20,52 @@ jobs:
         with:
           dotnet-version: '8.0.x'   # SDK only — app targets .NET Framework 4.8.1
 
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag.StartsWith("v")) {
+            $ver = $tag.Substring(1)
+          } else {
+            $ver = $tag
+          }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ver=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Build
+        run: dotnet build ThinkPad-Backlight-Tray.csproj -c Release
+
       - name: Publish
         run: dotnet publish ThinkPad-Backlight-Tray.csproj -c Release -o publish
 
-      - name: Extract version from tag
-        id: version
-        shell: bash
-        run: |
-          tag="${GITHUB_REF#refs/tags/}"
-          ver="${tag#v}"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "ver=$ver" >> "$GITHUB_OUTPUT"
-
       - name: Zip portable release
-        shell: pwsh
-        run: Compress-Archive -Path publish\* -DestinationPath "ThinkPad-Backlight-Tray-${{ steps.version.outputs.tag }}.zip"
-
-      - name: Build installer
+        id: zip
         shell: pwsh
         run: |
-          choco install innosetup --no-progress -y
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
-            /DAppVersion="${{ steps.version.outputs.ver }}" `
-            /DPublishDir="$PWD\publish" `
-            installer\setup.iss
+          $zipName = "ThinkPad-Backlight-Tray-v${{ steps.version.outputs.ver }}-portable.zip"
+          Compress-Archive -Path publish\* -DestinationPath $zipName -Force
+          "path=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Install WiX tool
+        shell: pwsh
+        run: dotnet tool install --global wix
+
+      - name: Build MSI installer
+        run: |
+          $publishDir = (Resolve-Path .\publish).Path
+          dotnet build installer\ThinkPad-Backlight-Tray.Installer.wixproj -c Release -p:Version=${{ steps.version.outputs.ver }} -p:PublishDir="$publishDir"
+
+      - name: Resolve MSI path
+        id: msi
+        shell: pwsh
+        run: |
+          $msiName = "ThinkPad-Backlight-Tray-Setup-v${{ steps.version.outputs.ver }}.msi"
+          $msiPath = Join-Path "installer\bin\Release" $msiName
+          if (!(Test-Path $msiPath)) {
+            throw "MSI not found: $msiPath"
+          }
+          "path=$msiPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -51,5 +73,5 @@ jobs:
           name: ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           files: |
-            ThinkPad-Backlight-Tray-${{ steps.version.outputs.tag }}.zip
-            installer/Output/ThinkPad-Backlight-Tray-Setup-${{ steps.version.outputs.tag }}.exe
+            ${{ steps.zip.outputs.path }}
+            ${{ steps.msi.outputs.path }}
