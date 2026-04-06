@@ -50,12 +50,16 @@ public class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _eventMonitor?.Stop();
+        _eventMonitor?.Dispose();
+        _eventMonitor = null;
         if (_notifyIcon != null)
         {
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
+            _notifyIcon = null;
         }
+
+        SettingsManager.Shutdown();
 
         base.OnExit(e);
     }
@@ -570,7 +574,7 @@ public class App : Application
 
     private void ExitApplication()
     {
-        _eventMonitor?.Stop();
+        _eventMonitor?.Dispose();
         _eventMonitor = null;
 
         if (_notifyIcon != null)
@@ -579,6 +583,8 @@ public class App : Application
             _notifyIcon.Dispose();
             _notifyIcon = null;
         }
+
+        SettingsManager.Shutdown();
 
         Shutdown();
     }

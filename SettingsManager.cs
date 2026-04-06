@@ -12,18 +12,32 @@ public static class SettingsManager
     private static readonly string RegistryPath = @"Software\ThinkPad-Backlight-Tray";
     private static readonly string RunRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private static readonly string RunValueName = "ThinkPad-Backlight-Tray";
+    private static readonly object SyncRoot = new();
     private static RegistryKey? _regKey;
 
     public static void Initialize()
     {
         try
         {
-            _regKey = Registry.CurrentUser.CreateSubKey(RegistryPath);
+            lock (SyncRoot)
+            {
+                _regKey?.Dispose();
+                _regKey = Registry.CurrentUser.CreateSubKey(RegistryPath);
+            }
             Debug.WriteLine($"Registry key initialized: HKCU\\{RegistryPath}");
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Error initializing registry: {ex.Message}");
+        }
+    }
+
+    public static void Shutdown()
+    {
+        lock (SyncRoot)
+        {
+            _regKey?.Dispose();
+            _regKey = null;
         }
     }
 

@@ -31,12 +31,18 @@ internal static class Program
 
         if (args.Length > 0)
         {
-            AttachConsole(ATTACH_PARENT_PROCESS);
+            var hasConsole = AttachConsole(ATTACH_PARENT_PROCESS);
+            if (!hasConsole)
+                hasConsole = AllocConsole();
+
             try
             {
-                // Re-open stdout/stderr after attaching to the parent console.
-                Console.SetOut(new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true });
-                Console.SetError(new StreamWriter(Console.OpenStandardError()) { AutoFlush = true });
+                if (hasConsole)
+                {
+                    // Re-open stdout/stderr after attaching to a console.
+                    Console.SetOut(new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true });
+                    Console.SetError(new StreamWriter(Console.OpenStandardError()) { AutoFlush = true });
+                }
 
                 if (TryHandleCommand(args))
                     return 0;

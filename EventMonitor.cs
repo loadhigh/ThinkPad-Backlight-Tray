@@ -39,6 +39,7 @@ public class EventMonitor : IDisposable
     private Timer? _resumeRestoreTimer;
 
     private bool _subscribed;
+    private volatile bool _isStopping;
 
     // Ticks (DateTime.UtcNow.Ticks) after which Fn+Space level changes are allowed again.
     private long _suppressFnSpaceUntil;
@@ -73,6 +74,8 @@ public class EventMonitor : IDisposable
 
     private void FireRestore()
     {
+        if (_isStopping) return;
+
         // During the post-resume hold-off window, skip restores from non-resume
         // sources (WMI, display polling) — the driver is still desynced.
         if (DateTime.UtcNow.Ticks < Interlocked.Read(ref _resumeHoldoffUntil))
@@ -94,6 +97,8 @@ public class EventMonitor : IDisposable
     /// </summary>
     private void FireRestoreFromResume()
     {
+        if (_isStopping) return;
+
         SuppressFnSpace();
         OnResumeRestoreBacklight?.Invoke();
     }
@@ -107,7 +112,14 @@ public class EventMonitor : IDisposable
     /// </summary>
     private void DebouncedFireRestore()
     {
-        _wmiDebounceTimer?.Change(WmiDebouncePeriodMs, Timeout.Infinite);
+        try
+        {
+            _wmiDebounceTimer?.Change(WmiDebouncePeriodMs, Timeout.Infinite);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Ignore races with Stop().
+        }
     }
 
     /// <summary>
@@ -120,6 +132,7 @@ public class EventMonitor : IDisposable
 
         try
         {
+            _isStopping = false;
             Debug.WriteLine("Starting event monitor...");
 
             // Shared debounce timer used by WMI event handlers below.
@@ -210,6 +223,7 @@ public class EventMonitor : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"Error starting event monitor: {ex.Message}");
+            Stop(); // ensure partial startup resources are released
             return false;
         }
     }
@@ -243,6 +257,8 @@ public class EventMonitor : IDisposable
     /// </summary>
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
+        if (_isStopping) return;
+
         if (e.Mode == PowerModes.Suspend)
         {
             Debug.WriteLine("PowerModeChanged: Suspend — suppressing Fn+Space");
@@ -388,6 +404,8 @@ public class EventMonitor : IDisposable
     /// </summary>
     public void Stop()
     {
+        _isStopping = true;
+
         if (_watcher1 != null)
             try
             {
@@ -453,7 +471,8 @@ public class EventMonitor : IDisposable
         if (_fnSpaceStop != null)
         {
             _fnSpaceStop.Set();
-            _fnSpaceThread?.Join(500);
+            if (_fnSpaceThread != null && !_fnSpaceThread.Join(500))
+                Debug.WriteLine("FnSpace watch thread did not exit within 500 ms");
             _fnSpaceStop.Dispose();
             _fnSpaceStop = null;
             _fnSpaceThread = null;

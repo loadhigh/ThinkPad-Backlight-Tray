@@ -15,6 +15,7 @@ public static class BacklightController
     }
 
     private static readonly object SyncRoot = new();
+    private static readonly object IoSyncRoot = new();
 
     private static bool _initialized;
     private static bool _available;
@@ -56,20 +57,32 @@ public static class BacklightController
     public static bool SetBacklightLevel(BacklightLevel level)
     {
         if (!_initialized) Initialize();
-        if (!_available || _pmDriverController == null) return false;
+        PmDriverBacklightController? controller;
+        lock (SyncRoot)
+        {
+            if (!_available || _pmDriverController == null) return false;
+            controller = _pmDriverController;
+        }
 
         const int maxRetries = 3;
         var delayMs = 100;
 
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
-            if (_pmDriverController.SetBacklightLevel((int)level))
+            bool ok;
+            lock (IoSyncRoot)
+            {
+                ok = controller.SetBacklightLevel((int)level);
+            }
+
+            if (ok)
             {
                 Debug.WriteLine($"Backlight set to {(int)level} (attempt {attempt})");
                 return true;
             }
 
-            Thread.Sleep(delayMs);
+            if (attempt < maxRetries)
+                Thread.Sleep(delayMs);
             delayMs *= 2;
         }
 
@@ -80,9 +93,21 @@ public static class BacklightController
     public static BacklightLevel? GetBacklightLevel()
     {
         if (!_initialized) Initialize();
-        if (!_available || _pmDriverController == null) return null;
+        PmDriverBacklightController? controller;
+        lock (SyncRoot)
+        {
+            if (!_available || _pmDriverController == null) return null;
+            controller = _pmDriverController;
+        }
 
-        if (_pmDriverController.TryGetBacklightLevel(out var level) && level is >= 0 and <= 2)
+        bool ok;
+        int level;
+        lock (IoSyncRoot)
+        {
+            ok = controller.TryGetBacklightLevel(out level);
+        }
+
+        if (ok && level is >= 0 and <= 2)
             return (BacklightLevel)level;
 
         return null;

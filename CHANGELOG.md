@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-04-05
+
+### Fixed
+
+- Harden shutdown/startup race handling in `EventMonitor` to avoid disposed-timer callback exceptions and partial-start resource leaks
+- Serialize IBMPmDrv IOCTL access in `BacklightController` under concurrent restore/get calls to reduce contention risk
+- Ensure `SettingsManager` disposes cached registry handles on reinitialize and app shutdown
+- Make CLI command mode in `Program` robust when no parent console exists
+
 ## [1.0.2] - 2026-04-01
 
 ### Changed
