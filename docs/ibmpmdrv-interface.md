@@ -435,3 +435,80 @@ The Linux `thinkpad_acpi.c` driver reads fan RPM via **EC (Embedded Controller) 
 This requires ring-0 port I/O (`inb`/`outb` to ports `0x62`/`0x66`), which is not available
 from Windows user mode without a dedicated kernel driver (e.g., WinRing0, LibreHardwareMonitor's
 bundled driver).
+
+---
+
+## 14. Lid State via Registry
+
+IBMPMSVC maintains a live lid-open/close state in the registry:
+
+```
+HKLM\SYSTEM\CurrentControlSet\Services\IBMPMSVC\Transform\CurrentStatus
+    Lid   (DWORD)   — 2 = open, 1 = closed (unconfirmed), 0 = unknown
+    MM    (DWORD)   — Multi-Mode state (0 = laptop, non-zero for tablet/tent)
+```
+
+This key is readable by standard users and can be monitored with `RegNotifyChangeKeyValue`
+to detect lid transitions without polling. When `Lid` changes from `1` → `2` (close → open),
+a backlight restore should be triggered.
+
+### Related Transform registry layout
+
+```
+HKLM\SYSTEM\CurrentControlSet\Services\IBMPMSVC\Transform\
+├── CurrentStatus\
+│   ├── Lid    (DWORD)   — live lid state
+│   └── MM     (DWORD)   — multi-mode / form-factor state
+└── Parameters\
+    ├── CurrentSetting   (DWORD)   — active DYTC mode (1 = balanced)
+    ├── ChkINode         (DWORD)   — internal node check flag
+    └── ChkOSV           (DWORD)   — OS version check flag
+```
+
+---
+
+## 15. Notification Bit Layout
+
+The `Notification\(default)` DWORD at `HKLM\...\IBMPMSVC\Parameters\Notification`
+encodes multiple hotkey event flags beyond the Fn+Space bit:
+
+| Bit | Mask | Event |
+|---|---|---|
+| 11 | `0x00000800` | Keyboard backlight toggle event |
+| 15 | `0x00008000` | Hotkey event (type varies) |
+| 17 | `0x00020000` | **Fn+Space pressed** (keyboard backlight cycle) |
+
+A secondary `Type2` DWORD at the same key holds additional notification bits:
+
+| Bit | Mask | Event |
+|---|---|---|
+| 4 | `0x00000010` | Type2 notification (purpose TBD) |
+| 16 | `0x00010000` | Type2 notification (purpose TBD) |
+
+---
+
+## 16. Named Kernel Events
+
+The events listed in §9 exist on running systems but are **restricted to elevated processes**.
+`OpenEvent(SYNCHRONIZE, ...)` returns `ERROR_ACCESS_DENIED` (5) for standard users.
+This makes them unsuitable for non-elevated tray applications.
+
+---
+
+## 17. IOCTL Subsystem Availability
+
+Not all dispatch-table IOCTLs are active on every model. Tested on ThinkPad P-series:
+
+| Subsystem | IOCTLs | Status |
+|---|---|---|
+| Keyboard backlight (MLCG/MLCS) | `0x00222A00`, `0x00222A04` | ✅ Active |
+| Lid sensor (LSHG, Fn `0x99D`) | `0x00222674` | ✅ Returns `0x0` (state) |
+| Airplane/backlight (SABK, Fn `0x99E`) | `0x00222678` | ⚠️ Stub — always returns `0x0` |
+| Smart standby (GSSP) | `0x00222620` | ✅ Returns `0x0` |
+| Indicator light (IILG, ILBG, ILBS) | `0x0022257C`, `0x00222744`, `0x00222774` | ❌ Absent (err=2) |
+| Thermal (TTHM/TSHM) | `0x00222564` | ❌ err=87 (invalid parameter) |
+| Clock/lid alt (SCLK/GCLK) | `0x002226E8` | ❌ Absent (err=2) |
+| Display/media (DMCG, DPTS) | `0x002226EC`, `0x00222740` | ❌ Absent (err=2) |
+| Smart mode (CSPA/SMMG) | `0x00222730` | ❌ Absent (err=2) |
+| Fan (SSFF/GSFF, FISW) | `0x00222688`, `0x0022268C` | ❌ Absent (err=2) |
+
