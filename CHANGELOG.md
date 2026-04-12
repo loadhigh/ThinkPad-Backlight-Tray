@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-04-12
+
 ### Fixed
 
 - Add `EnsureInitialized()` pattern to `SettingsManager` to prevent race conditions during concurrent initialization
