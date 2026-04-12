@@ -415,3 +415,23 @@ static extern bool DeviceIoControl(IntPtr hDevice, uint dwIoControlCode,
 [DllImport("kernel32.dll", SetLastError = true)]
 static extern bool CloseHandle(IntPtr handle);
 ```
+
+---
+
+## 13. Fan Speed Access
+
+Fan speed telemetry is **not** available through IBMPmDrv on current ThinkPad models.
+
+The fan-related ACPI methods (`SSFF`, `GSFF`, `FISW`) mapped in the dispatch table
+(functions `0x99E`, `0x9A2`, `0x9A3`) either return stubs or are absent from the
+driver's active dispatch table.
+
+### EC-based fan access on Linux
+
+The Linux `thinkpad_acpi.c` driver reads fan RPM via **EC (Embedded Controller) register I/O**:
+- Register `0x2F` (`HFSP`): fan duty/level byte
+- Registers `0x84`–`0x85`: tachometer value (16-bit LE; `RPM ≈ 1350000 / raw_value`)
+
+This requires ring-0 port I/O (`inb`/`outb` to ports `0x62`/`0x66`), which is not available
+from Windows user mode without a dedicated kernel driver (e.g., WinRing0, LibreHardwareMonitor's
+bundled driver).
