@@ -64,8 +64,7 @@ public class App : Application
         base.OnExit(e);
     }
 
-    // ── tray icon ────────────────────────────────────────────────
-
+    // ── tray icon ─────────────────────────────
     private void BuildTrayIcon()
     {
         _notifyIcon = new NotifyIcon
@@ -75,7 +74,7 @@ public class App : Application
             Visible = true,
             ContextMenuStrip = BuildContextMenu()
         };
-        _notifyIcon.MouseDoubleClick += (_, _) => RestoreBacklight(true);
+        _notifyIcon.MouseDoubleClick += (_, _) => _ = Task.Run(() => RestoreBacklight(true));
     }
 
     private ContextMenuStrip BuildContextMenu()
@@ -86,7 +85,7 @@ public class App : Application
         var restoreLevel = SettingsManager.GetRestoreLevel();
 
         var restoreNow = new ToolStripMenuItem("Restore Now");
-        restoreNow.Click += (_, _) => RestoreBacklight(true);
+        restoreNow.Click += (_, _) => _ = Task.Run(() => RestoreBacklight(true));
 
         var autoRestoreItem = new ToolStripMenuItem("Auto Restore")
         {
@@ -232,8 +231,7 @@ public class App : Application
         return SystemIcons.Application;
     }
 
-    // ── actions ──────────────────────────────────────────────────
-
+    // ── actions ───────────────────────────────
     private void RestoreBacklight(bool force = false)
     {
         if (!force && !SettingsManager.GetAutoRestore())
@@ -248,11 +246,14 @@ public class App : Application
             return;
         }
 
-        _ = Task.Run(() =>
+        if (!BacklightController.Initialize())
         {
-            var level = SettingsManager.GetEffectiveRestoreLevel();
-            BacklightController.SetBacklightLevel((BacklightController.BacklightLevel)level);
-        });
+            Debug.WriteLine("RestoreBacklight skipped: BacklightController not initialized");
+            return;
+        }
+
+        var level = SettingsManager.GetEffectiveRestoreLevel();
+        BacklightController.SetBacklightLevel((BacklightController.BacklightLevel)level);
     }
 
     /// <summary>
@@ -273,21 +274,24 @@ public class App : Application
             return;
         }
 
-        _ = Task.Run(() =>
+        if (!BacklightController.Initialize())
         {
-            var target = SettingsManager.GetEffectiveRestoreLevel();
+            Debug.WriteLine("KickAndRestoreBacklight skipped: BacklightController not initialized");
+            return;
+        }
 
-            // Kick with Dim or Full (never Off) to break the post-sleep desync.
-            // Use the level adjacent to the target so the final set is a real change.
-            var kick = target == (int)BacklightController.BacklightLevel.Full
-                ? BacklightController.BacklightLevel.Dim
-                : BacklightController.BacklightLevel.Full;
+        var target = SettingsManager.GetEffectiveRestoreLevel();
 
-            Debug.WriteLine($"KickAndRestoreBacklight: kick={kick} target={target}");
-            BacklightController.SetBacklightLevel(kick);
-            Thread.Sleep(500);
-            BacklightController.SetBacklightLevel((BacklightController.BacklightLevel)target);
-        });
+        // Kick with Dim or Full (never Off) to break the post-sleep desync.
+        // Use the level adjacent to the target so the final set is a real change.
+        var kick = target == (int)BacklightController.BacklightLevel.Full
+            ? BacklightController.BacklightLevel.Dim
+            : BacklightController.BacklightLevel.Full;
+
+        Debug.WriteLine($"KickAndRestoreBacklight: kick={kick} target={target}");
+        BacklightController.SetBacklightLevel(kick);
+        Thread.Sleep(500);
+        BacklightController.SetBacklightLevel((BacklightController.BacklightLevel)target);
     }
 
     private static void ShowInfo()

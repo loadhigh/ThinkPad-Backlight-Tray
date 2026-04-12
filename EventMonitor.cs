@@ -220,11 +220,17 @@ public class EventMonitor : IDisposable
             Debug.WriteLine("Event monitor fully started");
             return true;
         }
+        catch (OperationCanceledException)
+        {
+            // Expected if called via cancellation token
+            return false;
+        }
         catch (Exception ex)
         {
             Debug.WriteLine($"Error starting event monitor: {ex.Message}");
             Stop(); // ensure partial startup resources are released
-            return false;
+            throw new InvalidOperationException(
+                $"EventMonitor failed to start: {ex.Message}", ex);
         }
     }
 
@@ -331,49 +337,58 @@ public class EventMonitor : IDisposable
 
                     while (true)
                     {
-                        var ret = RegNotifyChangeKeyValue(
-                            notifyKey.Handle.DangerousGetHandle(),
-                            false, 4,
-                            changeEvent.SafeWaitHandle.DangerousGetHandle(),
-                            true);
-
-                        if (ret != 0)
+                        try
                         {
-                            Debug.WriteLine($"FnSpace watch: RegNotifyChangeKeyValue returned {ret}, stopping");
-                            break;
+                            var ret = RegNotifyChangeKeyValue(
+                                notifyKey.Handle.DangerousGetHandle(),
+                                false, 4,
+                                changeEvent.SafeWaitHandle.DangerousGetHandle(),
+                                true);
+
+                            if (ret != 0)
+                            {
+                                Debug.WriteLine($"FnSpace watch: RegNotifyChangeKeyValue returned {ret}, stopping");
+                                break;
+                            }
+
+                            var which = WaitHandle.WaitAny(waitHandles);
+                            if (which == 1) break; // stop requested
+
+                            var newVal = ReadNotifyValue(notifyKey);
+                            var changed = lastVal ^ newVal;
+                            lastVal = newVal;
+
+                            // Bit 17 flip = Fn+Space backlight level change
+                            if (((changed >> 17) & 1) == 1)
+                            {
+                                Debug.WriteLine("FnSpace watch: bit 17 flipped — Fn+Space pressed");
+
+                                // Suppress if a system restore event fired recently — lid-close
+                                // can transiently reset the hardware level to Off and flip the
+                                // same bit, which would overwrite the user's saved preference.
+                                if (DateTime.UtcNow.Ticks < Interlocked.Read(ref _suppressFnSpaceUntil))
+                                {
+                                    Debug.WriteLine("FnSpace watch: suppressed (within restore window)");
+                                }
+                                else
+                                {
+                                    var level = BacklightController.GetBacklightLevel();
+                                    if (level.HasValue)
+                                        OnFnSpaceLevelChanged?.Invoke((int)level.Value);
+                                }
+                            }
                         }
-
-                        var which = WaitHandle.WaitAny(waitHandles);
-                        if (which == 1) break; // stop requested
-
-                        var newVal = ReadNotifyValue(notifyKey);
-                        var changed = lastVal ^ newVal;
-                        lastVal = newVal;
-
-                        // Bit 17 flip = Fn+Space backlight level change
-                        if (((changed >> 17) & 1) == 1)
+                        catch (Exception ex)
                         {
-                            Debug.WriteLine("FnSpace watch: bit 17 flipped — Fn+Space pressed");
-
-                            // Suppress if a system restore event fired recently — lid-close
-                            // can transiently reset the hardware level to Off and flip the
-                            // same bit, which would overwrite the user's saved preference.
-                            if (DateTime.UtcNow.Ticks < Interlocked.Read(ref _suppressFnSpaceUntil))
-                            {
-                                Debug.WriteLine("FnSpace watch: suppressed (within restore window)");
-                            }
-                            else
-                            {
-                                var level = BacklightController.GetBacklightLevel();
-                                if (level.HasValue)
-                                    OnFnSpaceLevelChanged?.Invoke((int)level.Value);
-                            }
+                            Debug.WriteLine($"FnSpace watch thread failed: {ex.Message}");
+                            // Exit the loop on unexpected errors to prevent thread hang
+                            break;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"FnSpace watch thread failed: {ex.Message}");
+                    Debug.WriteLine($"FnSpace watch thread outer exception: {ex.Message}");
                 }
             })
         { IsBackground = true, Name = "FnSpace-Watch" };
