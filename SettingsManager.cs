@@ -32,6 +32,22 @@ public static class SettingsManager
         }
     }
 
+    /// <summary>
+    ///     Ensures the registry key is valid before accessing it.
+    ///     Must be called before any other SettingsManager operations.
+    /// </summary>
+    public static void EnsureInitialized()
+    {
+        lock (SyncRoot)
+        {
+            if (_regKey == null)
+            {
+                _regKey = Registry.CurrentUser.CreateSubKey(RegistryPath);
+            }
+        }
+        Debug.WriteLine($"Registry key ensured initialized: HKCU\\{RegistryPath}");
+    }
+
     public static void Shutdown()
     {
         lock (SyncRoot)
@@ -44,6 +60,7 @@ public static class SettingsManager
     /// <summary>Get the saved backlight level (default: Full/2).</summary>
     public static int GetBacklightLevel()
     {
+        EnsureInitialized();
         try
         {
             return Convert.ToInt32(_regKey?.GetValue("BacklightLevel", 2));
@@ -57,6 +74,7 @@ public static class SettingsManager
     /// <summary>Save the backlight level.</summary>
     public static void SetBacklightLevel(int level)
     {
+        EnsureInitialized();
         try
         {
             _regKey?.SetValue("BacklightLevel", level, RegistryValueKind.DWord);
@@ -71,6 +89,7 @@ public static class SettingsManager
     /// <summary>Get whether automatic backlight restore on system events is enabled (default: true).</summary>
     public static bool GetAutoRestore()
     {
+        EnsureInitialized();
         try
         {
             return Convert.ToInt32(_regKey?.GetValue("AutoRestore", 1)) != 0;
@@ -84,6 +103,7 @@ public static class SettingsManager
     /// <summary>Save the auto-restore enabled state.</summary>
     public static void SetAutoRestore(bool enable)
     {
+        EnsureInitialized();
         try
         {
             _regKey?.SetValue("AutoRestore", enable ? 1 : 0, RegistryValueKind.DWord);
@@ -101,6 +121,7 @@ public static class SettingsManager
     /// </summary>
     public static int GetRestoreLevel()
     {
+        EnsureInitialized();
         try
         {
             var val = Convert.ToInt32(_regKey?.GetValue("RestoreLevel", 0));
@@ -115,6 +136,7 @@ public static class SettingsManager
     /// <summary>Set the restore-to mode. 0 = Last, 1 = Dim, 2 = Full.</summary>
     public static void SetRestoreLevel(int level)
     {
+        EnsureInitialized();
         try
         {
             _regKey?.SetValue("RestoreLevel", level, RegistryValueKind.DWord);

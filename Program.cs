@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 namespace ThinkPadBacklightTray;
 
@@ -98,8 +99,7 @@ internal static class Program
                 return true;
 
             case "restore":
-                SettingsManager.Initialize();
-                BacklightController.Initialize();
+                InitializeSystem();
                 if (SessionHelper.IsConsoleSession())
                 {
                     var level = SettingsManager.GetEffectiveRestoreLevel();
@@ -109,7 +109,7 @@ internal static class Program
                 return true;
 
             case "restore-to":
-                SettingsManager.Initialize();
+                InitializeSystem();
                 if (args.Length < 2)
                 {
                     Console.Error.WriteLine("Missing argument. Usage: --restore-to <last|dim|full>");
@@ -135,18 +135,15 @@ internal static class Program
                 return true;
 
             case "startup-on":
-                SettingsManager.Initialize();
                 SettingsManager.SetRunAtStartup(true);
                 return true;
 
             case "startup-off":
-                SettingsManager.Initialize();
                 SettingsManager.SetRunAtStartup(false);
                 return true;
 
             case "info":
-                SettingsManager.Initialize();
-                BacklightController.Initialize();
+                InitializeSystem();
                 Console.WriteLine(App.BuildInfoString());
                 return true;
 
@@ -163,10 +160,19 @@ internal static class Program
         }
     }
 
-    private static void InitAndSetLevel(int level)
+    /// <summary>
+    ///     Initialize system components for CLI commands.
+    ///     This ensures SettingsManager and BacklightController are ready before operations.
+    /// </summary>
+    private static void InitializeSystem()
     {
         SettingsManager.Initialize();
         BacklightController.Initialize();
+    }
+
+    private static void InitAndSetLevel(int level)
+    {
+        InitializeSystem();
         SettingsManager.SetBacklightLevel(level);
         BacklightController.SetBacklightLevel((BacklightController.BacklightLevel)level);
     }
