@@ -19,15 +19,19 @@ Program.Main() [STAThread]
               ├── SettingsManager.Initialize()
               ├── BacklightController.Initialize()
               ├── EventMonitor.Start()
-              │     ├── WMI / PowerModeChanged / display polling → OnRestoreBacklight → App.RestoreBacklight()
+              │     ├── WMI / display polling → OnRestoreBacklight → App.RestoreBacklight()
+              │     ├── PowerModeChanged (Resume) → hold-off timer → OnResumeRestoreBacklight → App.KickAndRestoreBacklight()
               │     └── Fn+Space registry watcher → OnFnSpaceLevelChanged → SettingsManager.SetBacklightLevel()
               ├── BuildTrayIcon()
               └── RestoreBacklight()   ← immediate restore on launch
 ```
 
 - `App.cs` owns lifetime, tray menu actions, restore callback, Info dialog, and About dialog.
-- `EventMonitor.cs` triggers restore from WMI (`Win32_SystemConfigurationChangeEvent`, `Win32_PowerSupplyEvent`),
-  `SystemEvents.PowerModeChanged` (Resume), plus display-count polling fallback.
+- `EventMonitor.cs` triggers normal restore from WMI (`Win32_SystemConfigurationChangeEvent`, `Win32_PowerSupplyEvent`)
+  plus display-count polling fallback, and triggers a dedicated resume restore path from
+  `SystemEvents.PowerModeChanged` (Resume).
+- `EventMonitor.cs` uses WMI debounce (`WmiDebouncePeriodMs`), resume hold-off (`ResumeHoldoffMs`), and Fn+Space
+  suppression (`FnSpaceSuppressMs`) windows to avoid noisy/desynced restores.
 - `BacklightController.cs` is static and wraps a single provider with retry logic.
 - `SettingsManager.cs` persists `BacklightLevel`, `AutoRestore`, `RestoreLevel`, and run-at-startup settings under
   `HKCU\Software\ThinkPad-Backlight-Tray`.
@@ -54,12 +58,20 @@ dotnet build -c Release
 .\bin\Release\net481\ThinkPad-Backlight-Tray.exe
 ```
 
+```powershell
+dotnet tool install --global wix
+dotnet build installer\ThinkPad-Backlight-Tray.Installer.wixproj -p:Version=1.0.3 -p:PublishDir=$(Resolve-Path .\publish)
+```
+
 ## Project Conventions
 
 - Keep tray behavior in `App.cs`; keep driver IOCTL details in `PmDriverBacklightController.cs`.
-- Prefer log-and-continue over throwing in provider/watcher paths.
+- Prefer log-and-continue over throwing in provider/watcher paths, except unrecoverable full startup failure in
+  `EventMonitor.Start()` which throws `InvalidOperationException` after cleanup.
 - Registry booleans are `DWORD` `1`/`0`.
 - Run at Startup toggle uses manual `CheckOnClick = false` + `RebuildTrayMenu()` to stay in sync with registry.
+- `SettingsManager` uses lazy self-healing initialization via `EnsureInitialized()`; keep that behavior when adding
+  new settings accessors.
 - In mixed WPF/WinForms files, avoid type collisions via `using` aliases where needed (`TextBox`, `Button`,
   `Color`, `FontFamily`, etc.).
 
@@ -67,3 +79,4 @@ dotnet build -c Release
 
 - `App.cs`, `Program.cs`, `BacklightController.cs`, `PmDriverBacklightController.cs`
 - `EventMonitor.cs`, `SettingsManager.cs`, `SessionHelper.cs`, `README.md`
+- `installer/setup.wxs`, `installer/ThinkPad-Backlight-Tray.Installer.wixproj`, `.github/workflows/release.yml`

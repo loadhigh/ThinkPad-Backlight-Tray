@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Add `EnsureInitialized()` pattern to `SettingsManager` to prevent race conditions during concurrent initialization
+- Re-throw unexpected exceptions in `EventMonitor.Start()` after cleanup instead of silently logging them
+- Exit Fn+Space watcher thread loop on unexpected errors to prevent thread hang
+- Remove redundant `Task.Run()` wrappers in `App.RestoreBacklight()` and `App.KickAndRestoreBacklight()`
+- Add null check for `BacklightController` initialization in `App.RestoreBacklight()` and `App.KickAndRestoreBacklight()`
+- Extract `InitializeSystem()` helper in `Program.TryHandleCommand()` to ensure proper initialization before CLI operations
+
 ## [1.0.3] - 2026-04-05
 
 ### Fixed
