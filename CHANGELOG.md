@@ -11,6 +11,7 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Refactor core code paths in `App.cs`, `SettingsManager.cs`, and `EventMonitor.cs` to simplify restore/settings/monitor flow (`f492739`)
 - Update `AGENTS.md` guidance with current CLI/debug behavior, release/version workflow, and high-value file references for coding agents
 
 ## [1.0.4] - 2026-04-12
