@@ -52,6 +52,7 @@ public class App : Application
     {
         _eventMonitor?.Dispose();
         _eventMonitor = null;
+
         if (_notifyIcon != null)
         {
             _notifyIcon.Visible = false;
@@ -60,7 +61,6 @@ public class App : Application
         }
 
         SettingsManager.Shutdown();
-
         base.OnExit(e);
     }
 
@@ -94,49 +94,15 @@ public class App : Application
         };
         autoRestoreItem.Click += (_, _) =>
         {
-            var newState = !autoRestoreEnabled;
-            SettingsManager.SetAutoRestore(newState);
+            SettingsManager.SetAutoRestore(!autoRestoreEnabled);
             RebuildTrayMenu();
         };
 
         // ── Restore To submenu (Last / Dim / Full) ──
-        var restoreToLast = new ToolStripMenuItem("Last")
-        {
-            CheckOnClick = false,
-            Checked = restoreLevel == 0
-        };
-        restoreToLast.Click += (_, _) =>
-        {
-            SettingsManager.SetRestoreLevel(0);
-            RebuildTrayMenu();
-        };
-
-        var restoreToDim = new ToolStripMenuItem("Dim")
-        {
-            CheckOnClick = false,
-            Checked = restoreLevel == 1
-        };
-        restoreToDim.Click += (_, _) =>
-        {
-            SettingsManager.SetRestoreLevel(1);
-            RebuildTrayMenu();
-        };
-
-        var restoreToFull = new ToolStripMenuItem("Full")
-        {
-            CheckOnClick = false,
-            Checked = restoreLevel == 2
-        };
-        restoreToFull.Click += (_, _) =>
-        {
-            SettingsManager.SetRestoreLevel(2);
-            RebuildTrayMenu();
-        };
-
         var restoreToMenu = new ToolStripMenuItem("Restore To");
-        restoreToMenu.DropDownItems.Add(restoreToLast);
-        restoreToMenu.DropDownItems.Add(restoreToDim);
-        restoreToMenu.DropDownItems.Add(restoreToFull);
+        restoreToMenu.DropDownItems.Add(MakeRestoreToItem("Last", 0, restoreLevel));
+        restoreToMenu.DropDownItems.Add(MakeRestoreToItem("Dim",  1, restoreLevel));
+        restoreToMenu.DropDownItems.Add(MakeRestoreToItem("Full", 2, restoreLevel));
 
         var runAtStartupItem = new ToolStripMenuItem("Run at Startup")
         {
@@ -145,8 +111,7 @@ public class App : Application
         };
         runAtStartupItem.Click += (_, _) =>
         {
-            var newState = !runAtStartupEnabled;
-            SettingsManager.SetRunAtStartup(newState);
+            SettingsManager.SetRunAtStartup(!runAtStartupEnabled);
             RebuildTrayMenu();
         };
 
@@ -157,7 +122,7 @@ public class App : Application
         about.Click += (_, _) => ShowAbout();
 
         var exit = new ToolStripMenuItem("Exit");
-        exit.Click += (_, _) => ExitApplication();
+        exit.Click += (_, _) => Shutdown();
 
         var menu = new ContextMenuStrip
         {
@@ -182,10 +147,16 @@ public class App : Application
         return menu;
     }
 
+    private ToolStripMenuItem MakeRestoreToItem(string text, int level, int currentLevel)
+    {
+        var item = new ToolStripMenuItem(text) { CheckOnClick = false, Checked = currentLevel == level };
+        item.Click += (_, _) => { SettingsManager.SetRestoreLevel(level); RebuildTrayMenu(); };
+        return item;
+    }
+
     private void RebuildTrayMenu()
     {
         if (_notifyIcon == null) return;
-
         var oldMenu = _notifyIcon.ContextMenuStrip;
         _notifyIcon.ContextMenuStrip = BuildContextMenu();
         oldMenu?.Dispose();
@@ -231,27 +202,35 @@ public class App : Application
         return SystemIcons.Application;
     }
 
-    // ── actions ───────────────────────────────
-    private void RestoreBacklight(bool force = false)
+    // ── restore ───────────────────────────────
+
+    /// <summary>Returns true when the preconditions for a restore are met.</summary>
+    private static bool CanRestore(bool force, string callerName)
     {
         if (!force && !SettingsManager.GetAutoRestore())
         {
-            Debug.WriteLine("RestoreBacklight skipped: auto restore is disabled");
-            return;
+            Debug.WriteLine($"{callerName} skipped: auto restore is disabled");
+            return false;
         }
 
         if (!SessionHelper.IsConsoleSession())
         {
-            Debug.WriteLine("RestoreBacklight skipped: not a physical console session");
-            return;
+            Debug.WriteLine($"{callerName} skipped: not a physical console session");
+            return false;
         }
 
         if (!BacklightController.Initialize())
         {
-            Debug.WriteLine("RestoreBacklight skipped: BacklightController not initialized");
-            return;
+            Debug.WriteLine($"{callerName} skipped: BacklightController not initialized");
+            return false;
         }
 
+        return true;
+    }
+
+    private void RestoreBacklight(bool force = false)
+    {
+        if (!CanRestore(force, nameof(RestoreBacklight))) return;
         var level = SettingsManager.GetEffectiveRestoreLevel();
         BacklightController.SetBacklightLevel((BacklightController.BacklightLevel)level);
     }
@@ -262,28 +241,11 @@ public class App : Application
     /// </summary>
     private void KickAndRestoreBacklight()
     {
-        if (!SettingsManager.GetAutoRestore())
-        {
-            Debug.WriteLine("KickAndRestoreBacklight skipped: auto restore is disabled");
-            return;
-        }
-
-        if (!SessionHelper.IsConsoleSession())
-        {
-            Debug.WriteLine("KickAndRestoreBacklight skipped: not a physical console session");
-            return;
-        }
-
-        if (!BacklightController.Initialize())
-        {
-            Debug.WriteLine("KickAndRestoreBacklight skipped: BacklightController not initialized");
-            return;
-        }
+        if (!CanRestore(false, nameof(KickAndRestoreBacklight))) return;
 
         var target = SettingsManager.GetEffectiveRestoreLevel();
 
         // Kick with Dim or Full (never Off) to break the post-sleep desync.
-        // Use the level adjacent to the target so the final set is a real change.
         var kick = target == (int)BacklightController.BacklightLevel.Full
             ? BacklightController.BacklightLevel.Dim
             : BacklightController.BacklightLevel.Full;
@@ -294,6 +256,7 @@ public class App : Application
         BacklightController.SetBacklightLevel((BacklightController.BacklightLevel)target);
     }
 
+    // ── dialogs ───────────────────────────────
     private static void ShowInfo()
     {
         var info = BuildInfoString();
@@ -364,7 +327,6 @@ public class App : Application
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         var versionString = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v1.0.0";
 
-        // ── title ────────────────────────────────────────────────────────────
         var titleText = new TextBlock
         {
             Text = "ThinkPad Backlight Tray",
@@ -397,7 +359,6 @@ public class App : Application
             Margin = new Thickness(0, 0, 0, 8)
         };
 
-        // ── close button ─────────────────────────────────────────────────────
         var closeButton = new Button
         {
             Content = "Close",
@@ -409,11 +370,7 @@ public class App : Application
         };
         ApplyThemeToButton(closeButton, darkMode);
 
-        // ── layout ───────────────────────────────────────────────────────────
-        var stack = new StackPanel
-        {
-            Margin = new Thickness(24, 24, 24, 20)
-        };
+        var stack = new StackPanel { Margin = new Thickness(24, 24, 24, 20) };
         stack.Children.Add(titleText);
         stack.Children.Add(versionText);
         stack.Children.Add(descText);
@@ -432,7 +389,7 @@ public class App : Application
 
         ApplyThemeToWindow(window, darkMode);
 
-        // propagate foreground to text blocks after theme sets window foreground
+        // Propagate foreground to text blocks after theme sets window foreground.
         var fg = window.Foreground;
         titleText.Foreground = fg;
         versionText.Foreground = fg;
@@ -443,14 +400,14 @@ public class App : Application
         window.Show();
     }
 
+    // ── theming ───────────────────────────────
     private static bool IsSystemDarkMode()
     {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", false);
-            var value = key?.GetValue("AppsUseLightTheme", 1);
-            return Convert.ToInt32(value) == 0;
+            return Convert.ToInt32(key?.GetValue("AppsUseLightTheme", 1)) == 0;
         }
         catch
         {
@@ -474,55 +431,43 @@ public class App : Application
         {
             var hwnd = new WindowInteropHelper(window).Handle;
             if (hwnd == IntPtr.Zero) return;
-
-            // DWM non-client area dark mode integration.
             var useDark = darkMode ? 1 : 0;
             _ = DwmSetWindowAttribute(hwnd, DwmaUseImmersiveDarkMode, ref useDark, sizeof(int));
-
-            // UxTheme integration for native-themed window parts.
             _ = SetWindowTheme(hwnd, darkMode ? "DarkMode_Explorer" : "Explorer", null);
         };
     }
 
     private static void ApplyThemeToTextBox(TextBox textBox, bool darkMode)
     {
-        textBox.Background = new SolidColorBrush(
-            darkMode
-                ? System.Windows.Media.Color.FromRgb(0x2B, 0x2B, 0x2B)
-                : System.Windows.Media.Color.FromRgb(0xFF, 0xFF, 0xFF));
-        textBox.Foreground = new SolidColorBrush(
-            darkMode
-                ? System.Windows.Media.Color.FromRgb(0xF2, 0xF2, 0xF2)
-                : System.Windows.Media.Color.FromRgb(0x1C, 0x1C, 0x1C));
+        textBox.Background = new SolidColorBrush(darkMode
+            ? System.Windows.Media.Color.FromRgb(0x2B, 0x2B, 0x2B)
+            : System.Windows.Media.Color.FromRgb(0xFF, 0xFF, 0xFF));
+        textBox.Foreground = new SolidColorBrush(darkMode
+            ? System.Windows.Media.Color.FromRgb(0xF2, 0xF2, 0xF2)
+            : System.Windows.Media.Color.FromRgb(0x1C, 0x1C, 0x1C));
         textBox.CaretBrush = textBox.Foreground;
     }
 
     private static void ApplyThemeToButton(Button button, bool darkMode)
     {
-        button.Background = new SolidColorBrush(
-            darkMode
-                ? System.Windows.Media.Color.FromRgb(0x31, 0x31, 0x31)
-                : System.Windows.Media.Color.FromRgb(0xF3, 0xF3, 0xF3));
-        button.Foreground = new SolidColorBrush(
-            darkMode
-                ? System.Windows.Media.Color.FromRgb(0xF2, 0xF2, 0xF2)
-                : System.Windows.Media.Color.FromRgb(0x1C, 0x1C, 0x1C));
-        button.BorderBrush = new SolidColorBrush(
-            darkMode
-                ? System.Windows.Media.Color.FromRgb(0x4A, 0x4A, 0x4A)
-                : System.Windows.Media.Color.FromRgb(0xD0, 0xD0, 0xD0));
+        button.Background = new SolidColorBrush(darkMode
+            ? System.Windows.Media.Color.FromRgb(0x31, 0x31, 0x31)
+            : System.Windows.Media.Color.FromRgb(0xF3, 0xF3, 0xF3));
+        button.Foreground = new SolidColorBrush(darkMode
+            ? System.Windows.Media.Color.FromRgb(0xF2, 0xF2, 0xF2)
+            : System.Windows.Media.Color.FromRgb(0x1C, 0x1C, 0x1C));
+        button.BorderBrush = new SolidColorBrush(darkMode
+            ? System.Windows.Media.Color.FromRgb(0x4A, 0x4A, 0x4A)
+            : System.Windows.Media.Color.FromRgb(0xD0, 0xD0, 0xD0));
     }
 
     [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(
-        IntPtr hwnd,
-        int dwAttribute,
-        ref int pvAttribute,
-        int cbAttribute);
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
     [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
     private static extern int SetWindowTheme(IntPtr hwnd, string? pszSubAppName, string? pszSubIdList);
 
+    // ── info ──────────────────────────────────
     internal static string BuildInfoString()
     {
         var savedLevel = SettingsManager.GetBacklightLevel();
@@ -553,69 +498,46 @@ public class App : Application
         sb.AppendLine(BacklightController.GetProviderStatusSummary());
         return sb.ToString();
 
-        static string FormatLevel(int level)
+        static string FormatLevel(int level) => level switch
         {
-            return level switch
-            {
-                0 => "Off",
-                1 => "Dim",
-                2 => "Full",
-                _ => "Unknown"
-            };
-        }
+            0 => "Off",
+            1 => "Dim",
+            2 => "Full",
+            _ => "Unknown"
+        };
 
-        static string FormatRestoreMode(int mode)
+        static string FormatRestoreMode(int mode) => mode switch
         {
-            return mode switch
-            {
-                0 => "Last",
-                1 => "Dim",
-                2 => "Full",
-                _ => "Unknown"
-            };
-        }
-    }
-
-    private void ExitApplication()
-    {
-        _eventMonitor?.Dispose();
-        _eventMonitor = null;
-
-        if (_notifyIcon != null)
-        {
-            _notifyIcon.Visible = false;
-            _notifyIcon.Dispose();
-            _notifyIcon = null;
-        }
-
-        SettingsManager.Shutdown();
-
-        Shutdown();
+            0 => "Last",
+            1 => "Dim",
+            2 => "Full",
+            _ => "Unknown"
+        };
     }
 
     private sealed class ThemedColorTable(bool darkMode) : ProfessionalColorTable
     {
         private readonly bool _dark = darkMode;
 
-        private Color Bg => _dark ? Color.FromArgb(0x20, 0x20, 0x20) : Color.FromArgb(0xFA, 0xFA, 0xFA);
-        private Color Border => _dark ? Color.FromArgb(0x44, 0x44, 0x44) : Color.FromArgb(0xD0, 0xD0, 0xD0);
-        private Color ItemHover => _dark ? Color.FromArgb(0x3A, 0x3A, 0x3A) : Color.FromArgb(0xE8, 0xE8, 0xE8);
+        private Color Bg         => _dark ? Color.FromArgb(0x20, 0x20, 0x20) : Color.FromArgb(0xFA, 0xFA, 0xFA);
+        private Color Border      => _dark ? Color.FromArgb(0x44, 0x44, 0x44) : Color.FromArgb(0xD0, 0xD0, 0xD0);
+        private Color ItemHover   => _dark ? Color.FromArgb(0x3A, 0x3A, 0x3A) : Color.FromArgb(0xE8, 0xE8, 0xE8);
         private Color ItemPressed => _dark ? Color.FromArgb(0x45, 0x45, 0x45) : Color.FromArgb(0xDE, 0xDE, 0xDE);
-        private Color Sep => _dark ? Color.FromArgb(0x4A, 0x4A, 0x4A) : Color.FromArgb(0xDB, 0xDB, 0xDB);
+        private Color Sep         => _dark ? Color.FromArgb(0x4A, 0x4A, 0x4A) : Color.FromArgb(0xDB, 0xDB, 0xDB);
 
-        public override Color ToolStripDropDownBackground => Bg;
-        public override Color MenuBorder => Border;
-        public override Color MenuItemBorder => Border;
-        public override Color MenuItemSelected => ItemHover;
-        public override Color MenuItemSelectedGradientBegin => ItemHover;
-        public override Color MenuItemSelectedGradientEnd => ItemHover;
-        public override Color MenuItemPressedGradientBegin => ItemPressed;
-        public override Color MenuItemPressedGradientMiddle => ItemPressed;
-        public override Color MenuItemPressedGradientEnd => ItemPressed;
-        public override Color SeparatorDark => Sep;
-        public override Color SeparatorLight => Sep;
-        public override Color ImageMarginGradientBegin => Bg;
-        public override Color ImageMarginGradientMiddle => Bg;
-        public override Color ImageMarginGradientEnd => Bg;
+        public override Color ToolStripDropDownBackground    => Bg;
+        public override Color MenuBorder                     => Border;
+        public override Color MenuItemBorder                 => Border;
+        public override Color MenuItemSelected               => ItemHover;
+        public override Color MenuItemSelectedGradientBegin  => ItemHover;
+        public override Color MenuItemSelectedGradientEnd    => ItemHover;
+        public override Color MenuItemPressedGradientBegin   => ItemPressed;
+        public override Color MenuItemPressedGradientMiddle  => ItemPressed;
+        public override Color MenuItemPressedGradientEnd     => ItemPressed;
+        public override Color SeparatorDark                  => Sep;
+        public override Color SeparatorLight                 => Sep;
+        public override Color ImageMarginGradientBegin       => Bg;
+        public override Color ImageMarginGradientMiddle      => Bg;
+        public override Color ImageMarginGradientEnd         => Bg;
     }
 }

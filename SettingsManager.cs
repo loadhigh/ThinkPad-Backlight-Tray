@@ -32,20 +32,13 @@ public static class SettingsManager
         }
     }
 
-    /// <summary>
-    ///     Ensures the registry key is valid before accessing it.
-    ///     Must be called before any other SettingsManager operations.
-    /// </summary>
-    public static void EnsureInitialized()
+    private static void EnsureInitialized()
     {
         lock (SyncRoot)
         {
             if (_regKey == null)
-            {
                 _regKey = Registry.CurrentUser.CreateSubKey(RegistryPath);
-            }
         }
-        Debug.WriteLine($"Registry key ensured initialized: HKCU\\{RegistryPath}");
     }
 
     public static void Shutdown()
@@ -57,63 +50,42 @@ public static class SettingsManager
         }
     }
 
-    /// <summary>Get the saved backlight level (default: Full/2).</summary>
-    public static int GetBacklightLevel()
+    // ── registry helpers ──────────────────────
+
+    private static int GetDword(string name, int defaultValue)
+    {
+        EnsureInitialized();
+        try   { return Convert.ToInt32(_regKey?.GetValue(name, defaultValue)); }
+        catch { return defaultValue; }
+    }
+
+    private static void SetDword(string name, int value)
     {
         EnsureInitialized();
         try
         {
-            return Convert.ToInt32(_regKey?.GetValue("BacklightLevel", 2));
+            _regKey?.SetValue(name, value, RegistryValueKind.DWord);
+            Debug.WriteLine($"Registry saved {name}={value}");
         }
-        catch
+        catch (Exception ex)
         {
-            return 2;
+            Debug.WriteLine($"Error saving {name}: {ex.Message}");
         }
     }
+
+    // ── settings accessors ────────────────────
+
+    /// <summary>Get the saved backlight level (default: Full/2).</summary>
+    public static int GetBacklightLevel() => GetDword("BacklightLevel", 2);
 
     /// <summary>Save the backlight level.</summary>
-    public static void SetBacklightLevel(int level)
-    {
-        EnsureInitialized();
-        try
-        {
-            _regKey?.SetValue("BacklightLevel", level, RegistryValueKind.DWord);
-            Debug.WriteLine($"Backlight level saved: {level}");
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error saving backlight level: {ex.Message}");
-        }
-    }
+    public static void SetBacklightLevel(int level) => SetDword("BacklightLevel", level);
 
     /// <summary>Get whether automatic backlight restore on system events is enabled (default: true).</summary>
-    public static bool GetAutoRestore()
-    {
-        EnsureInitialized();
-        try
-        {
-            return Convert.ToInt32(_regKey?.GetValue("AutoRestore", 1)) != 0;
-        }
-        catch
-        {
-            return true;
-        }
-    }
+    public static bool GetAutoRestore() => GetDword("AutoRestore", 1) != 0;
 
     /// <summary>Save the auto-restore enabled state.</summary>
-    public static void SetAutoRestore(bool enable)
-    {
-        EnsureInitialized();
-        try
-        {
-            _regKey?.SetValue("AutoRestore", enable ? 1 : 0, RegistryValueKind.DWord);
-            Debug.WriteLine($"AutoRestore saved: {enable}");
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error saving AutoRestore: {ex.Message}");
-        }
-    }
+    public static void SetAutoRestore(bool enable) => SetDword("AutoRestore", enable ? 1 : 0);
 
     /// <summary>
     ///     Get the restore-to mode (default: 0 = Last).
@@ -121,32 +93,12 @@ public static class SettingsManager
     /// </summary>
     public static int GetRestoreLevel()
     {
-        EnsureInitialized();
-        try
-        {
-            var val = Convert.ToInt32(_regKey?.GetValue("RestoreLevel", 0));
-            return val is >= 0 and <= 2 ? val : 0;
-        }
-        catch
-        {
-            return 0;
-        }
+        var val = GetDword("RestoreLevel", 0);
+        return val is >= 0 and <= 2 ? val : 0;
     }
 
     /// <summary>Set the restore-to mode. 0 = Last, 1 = Dim, 2 = Full.</summary>
-    public static void SetRestoreLevel(int level)
-    {
-        EnsureInitialized();
-        try
-        {
-            _regKey?.SetValue("RestoreLevel", level, RegistryValueKind.DWord);
-            Debug.WriteLine($"RestoreLevel saved: {level}");
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error saving RestoreLevel: {ex.Message}");
-        }
-    }
+    public static void SetRestoreLevel(int level) => SetDword("RestoreLevel", level);
 
     /// <summary>
     ///     Returns the backlight level that should be applied on restore.

@@ -421,68 +421,14 @@ public class EventMonitor : IDisposable
     {
         _isStopping = true;
 
-        if (_watcher1 != null)
-            try
-            {
-                _watcher1.Stop();
-                _watcher1.Dispose();
-                _watcher1 = null;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error stopping watcher1: {ex.Message}");
-            }
-
-        if (_watcher2 != null)
-            try
-            {
-                _watcher2.Stop();
-                _watcher2.Dispose();
-                _watcher2 = null;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error stopping watcher2: {ex.Message}");
-            }
-
-        if (_displayMonitorTimer != null)
-            try
-            {
-                _displayMonitorTimer.Change(Timeout.Infinite, Timeout.Infinite);
-                _displayMonitorTimer.Dispose();
-                _displayMonitorTimer = null;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error stopping display monitor timer: {ex.Message}");
-            }
-
-        if (_wmiDebounceTimer != null)
-            try
-            {
-                _wmiDebounceTimer.Change(Timeout.Infinite, Timeout.Infinite);
-                _wmiDebounceTimer.Dispose();
-                _wmiDebounceTimer = null;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error stopping WMI debounce timer: {ex.Message}");
-            }
-
-        if (_resumeRestoreTimer != null)
-            try
-            {
-                _resumeRestoreTimer.Dispose();
-                _resumeRestoreTimer = null;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error stopping resume restore timer: {ex.Message}");
-            }
+        StopWatcher(ref _watcher1, "watcher1");
+        StopWatcher(ref _watcher2, "watcher2");
+        StopTimer(ref _displayMonitorTimer, "display monitor timer");
+        StopTimer(ref _wmiDebounceTimer,    "WMI debounce timer");
+        StopTimer(ref _resumeRestoreTimer,  "resume restore timer");
 
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
 
-        // Stop Fn+Space watcher
         if (_fnSpaceStop != null)
         {
             _fnSpaceStop.Set();
@@ -495,5 +441,21 @@ public class EventMonitor : IDisposable
 
         _subscribed = false;
         Debug.WriteLine("Event monitor stopped");
+    }
+
+    private static void StopWatcher(ref ManagementEventWatcher? watcher, string name)
+    {
+        if (watcher == null) return;
+        try   { watcher.Stop(); watcher.Dispose(); }
+        catch (Exception ex) { Debug.WriteLine($"Error stopping {name}: {ex.Message}"); }
+        watcher = null;
+    }
+
+    private static void StopTimer(ref Timer? timer, string name)
+    {
+        if (timer == null) return;
+        try   { timer.Change(Timeout.Infinite, Timeout.Infinite); timer.Dispose(); }
+        catch (Exception ex) { Debug.WriteLine($"Error stopping {name}: {ex.Message}"); }
+        timer = null;
     }
 }
