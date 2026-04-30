@@ -6,6 +6,7 @@
 - WPF is used for the Info and About dialog windows.
 - WinForms is used for tray icon/menu (`NotifyIcon`, `ContextMenuStrip`).
 - App entry point: `Program.cs` `[STAThread] Main` → `new App().Run()`.
+- `Program.cs` also supports CLI-only execution via `TryHandleCommand()` and `--debug` tray mode with live `Debug.WriteLine` console output.
 - Backlight control is via the IBMPmDrv kernel driver only (`\\.\IBMPmDrv`).
 - Restore is gated by `SessionHelper.IsConsoleSession()` (skip in RDP sessions).
 
@@ -60,8 +61,11 @@ dotnet build -c Release
 
 ```powershell
 dotnet tool install --global wix
-dotnet build installer\ThinkPad-Backlight-Tray.Installer.wixproj -p:Version=1.0.3 -p:PublishDir=$(Resolve-Path .\publish)
+dotnet build installer\ThinkPad-Backlight-Tray.Installer.wixproj -p:Version=X.Y.Z -p:PublishDir=$(Resolve-Path .\publish)
 ```
+
+- Version source of truth is `<Version>` in `ThinkPad-Backlight-Tray.csproj`; keep installer `-p:Version=...` aligned.
+- Release publishing is tag-driven: pushing `vX.Y.Z` triggers `.github/workflows/release.yml` to build and upload portable zip + MSI artifacts.
 
 ## Project Conventions
 
@@ -72,6 +76,7 @@ dotnet build installer\ThinkPad-Backlight-Tray.Installer.wixproj -p:Version=1.0.
 - Run at Startup toggle uses manual `CheckOnClick = false` + `RebuildTrayMenu()` to stay in sync with registry.
 - `SettingsManager` uses lazy self-healing initialization via `EnsureInitialized()`; keep that behavior when adding
   new settings accessors.
+- If you add or rename CLI switches in `Program.cs`, keep `PrintHelp()` and `README.md` `## CLI` in sync.
 - In mixed WPF/WinForms files, avoid type collisions via `using` aliases where needed (`TextBox`, `Button`,
   `Color`, `FontFamily`, etc.).
 
@@ -79,4 +84,5 @@ dotnet build installer\ThinkPad-Backlight-Tray.Installer.wixproj -p:Version=1.0.
 
 - `App.cs`, `Program.cs`, `BacklightController.cs`, `PmDriverBacklightController.cs`
 - `EventMonitor.cs`, `SettingsManager.cs`, `SessionHelper.cs`, `README.md`
+- `ThinkPad-Backlight-Tray.csproj`, `CHANGELOG.md`
 - `installer/setup.wxs`, `installer/ThinkPad-Backlight-Tray.Installer.wixproj`, `.github/workflows/release.yml`

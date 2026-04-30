@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-04-29
+
+### Changed
+
+- Update `AGENTS.md` guidance with current CLI/debug behavior, release/version workflow, and high-value file references for coding agents
+
 ## [1.0.4] - 2026-04-12
 
 ### Fixed
